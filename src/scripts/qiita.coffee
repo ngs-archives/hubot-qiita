@@ -32,8 +32,9 @@ module.exports = (robot) ->
   if missings.length > 0
     robot.logger.error "Required configuration#{ if missings.length == 1 then 'is' else 's are' } missing: #{ missings.join ', ' }"
 
-  host = "#{HUBOT_QIITA_TEAM}.qiita.com"
-  scope = 'write_qiita_team'
+  scope = 'read_qiita_team write_qiita_team read_qiita write_qiita'
+
+  getHost = -> "#{HUBOT_QIITA_TEAM}.qiita.com"
 
   getAccessToken = (msg) ->
     userId = msg.envelope.user.id
@@ -45,21 +46,33 @@ module.exports = (robot) ->
     null
 
   httpScope = (path, params) ->
+    accessToken = null
+    if params?.token?
+      accessToken = params.token
+      delete params.token
+    if params?.host?
+      host = params.host
+      delete params.host
+    else
+      host = getHost()
     http = robot
       .http("https://#{host}/api/v2/#{path}")
       .header('Content-Type', 'application/json')
       .header('Accept', 'application/json')
-    if params?.token?
-      delete params.token
-      http.header 'Authorization', "Bearer #{params.token}"
+    if accessToken
+      http.header 'Authorization', "Bearer #{accessToken}"
     http
 
   getAPI = (path, params, callback) ->
     if !callback? && typeof params is 'function'
       callback = params
-      params = null
+      params = {}
+    query = {}
+    for k, v in params || {}
+      query[k] = v unless k is 'token'
+    qstr = qs.stringify query
+    path += "?#{qstr}" if qstr.length > 0
     http = httpScope path, params
-    path += "?#{qs.stringify params}" if params?
     http.get() (err, res, body) ->
       try
         body = JSON.parse body if typeof body is 'string'
@@ -68,7 +81,8 @@ module.exports = (robot) ->
       callback err, res, body
 
   postAPI = (path, params, callback) ->
-    httpScope(path, params).post(JSON.stringify params) (err, res, body) ->
+    data = JSON.stringify params
+    httpScope(path, params).post(data) (err, res, body) ->
       try
         body = JSON.parse body if typeof body is 'string'
       catch e
@@ -85,7 +99,7 @@ module.exports = (robot) ->
         client_id: HUBOT_QIITA_CLIENT_ID
         state: pendingToken
         scope: scope
-      url = "https://#{host}/api/v2/oauth/authorize?#{qs.stringify params}"
+      url = "https://#{getHost()}/api/v2/oauth/authorize?#{qs.stringify params}"
       obj = robot.brain.get(BRAIN_KEY_PENDING_TOKEN) || {}
       { room, user } = msg.envelope
       obj[pendingToken] = { room, user }
@@ -105,14 +119,18 @@ module.exports = (robot) ->
       code: code
       client_secret: HUBOT_QIITA_CLIENT_SECRET
       client_id: HUBOT_QIITA_CLIENT_ID
+      host: 'qiita.com'
     }
     postAPI 'access_tokens', params, (err, res, body) ->
-      console.info body
       { token } = body
       if token?
-        getAPI 'authenticated_user', (err, res, body) ->
+        getAPI 'authenticated_user', { token }, (err, res, body) ->
           { id } = body
           if id?
+            userId = envelope?.user?.id
+            obj = robot.brain.get(BRAIN_KEY_ACCESS_TOKENS) || {}
+            obj[userId] = token
+            robot.brain.set BRAIN_KEY_ACCESS_TOKENS, obj
             robot.reply envelope, "Authenticated to Qiita with id:#{id}"
             httpRes.send 'OK'
           else
@@ -131,8 +149,8 @@ module.exports = (robot) ->
       body = jsonBody['expanded_body']
       tags = jsonBody['expanded_tags']
       title ||= jsonBody['expanded_title']
-      postAPI 'items', { body, coediting, tags, title }, (err, res, body) ->
-        msg.reply "Created new #{ if coediting then 'coediting ' else '' }item *#{body.title}* https://#{host}/items/#{body.id}"
+      postAPI 'items', { body, coediting, tags, title, token }, (err, res, body) ->
+        msg.reply "Created new #{ if coediting then 'coediting ' else '' }item *#{body.title}* https://#{getHost()}/items/#{body.id}"
 
   robot.respond /\s*qiita\s+(?:list|ls)\s+templates?\s*$/i, (msg) ->
     return unless token = checkAuthenticated msg
@@ -150,7 +168,7 @@ module.exports = (robot) ->
         text = ['Listing stocked items:']
         for { id, title, body } in jsonBody
           if !query? or body?.indexOf(query) >= 0 or title?.indexOf(query) >= 0
-            text.push "#{title}: https://#{host}/items/#{id}"
+            text.push "#{title}: https://#{getHost()}/items/#{id}"
         msg.reply text.join "\n"
 
   robot.respond /\s*qiita\s+start\s+recording(?:\s+"([^"]+)")?\s*$/i, (msg) ->
@@ -163,8 +181,9 @@ module.exports = (robot) ->
     title = msg.match?[1] || "Chat record #{dateString} on #{room}"
     buffer = ["# Recording started by #{user.name} at #{dateString}\n\n"]
     listener = new TextListener robot, /.*/, (msg) ->
-      if msg.envelope.room is room
-        buffer.push "## #{dateformat new Date(), "yyyy/mm/dd HH:MM"} by #{msg.envelope.user.name}\n\n#{msg.text}\n\n"
+      {envelope} = msg
+      if envelope.room is room
+        buffer.push "## #{dateformat new Date(), "yyyy/mm/dd HH:MM"} by #{envelope.user.name}\n\n#{envelope.message.text}\n\n"
     recordingSessions[room] = { listener, title, buffer }
     robot.listeners.push listener
     msg.reply 'Started recording session'
@@ -179,8 +198,9 @@ module.exports = (robot) ->
     { buffer, title, listener } = session
     index = robot.listeners.indexOf listener
     body = buffer.join "\n"
-    tags = [room]
+    tags = [{name: room}]
     process.nextTick ->
       robot.listeners.splice index, 1 if index != -1
-    postAPI 'items', { body, tags, title }, (err, res, body) ->
-      msg.reply "Created new item *#{body.title}* https://#{host}/items/#{body.id}"
+    params = { body, tags, title, token }
+    postAPI 'items', params, (err, res, body) ->
+      msg.reply "Created new item *#{body.title}* https://#{getHost()}/items/#{body.id}"

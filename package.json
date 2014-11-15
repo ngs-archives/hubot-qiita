@@ -42,7 +42,8 @@
     "gulp-clean": "^0.3.0",
     "gulp-coffeelint": "^0.3.3",
     "gulp-watch": "^0.6.5",
-    "chest": "^0.1.5"
+    "chest": "^0.1.5",
+    "qiita-js": "^0.1.0"
   },
   "dependencies": {
     "dateformat": "^1.0.8"

@@ -11,9 +11,11 @@ describe 'hubot-qiita', ->
   user = null
   adapter = null
   nockScope = null
+  nockScope2 = null
   beforeEach (done)->
     nock.disableNetConnect()
     nockScope = nock 'https://myteam.qiita.com'
+    nockScope2 = nock 'https://qiita.com'
     process.env.HUBOT_QIITA_TEAM = 'myteam'
     process.env.HUBOT_QIITA_CLIENT_ID = 'abcd1234abcd1234abcd1234abcd1234abcd1234'
     process.env.HUBOT_QIITA_CLIENT_SECRET = '4321dcba4321dcba4321dcba4321dcba4321dcba'
@@ -83,7 +85,7 @@ describe 'hubot-qiita', ->
               pendingToken = Object.keys(obj)[0]
               expect(pendingToken).to.match /^[a-f0-9]{40}$/
               expect(obj[pendingToken]).to.deep.equal { room: '#mocha', user: { name: 'ngs', room: '#mocha', id: '1' } }
-              expect(strings).to.deep.equal ["Visit this URL and authorize application: https://myteam.qiita.com/api/v2/oauth/authorize?client_id=abcd1234abcd1234abcd1234abcd1234abcd1234&state=#{pendingToken}&scope=write_qiita_team"]
+              expect(strings).to.deep.equal ["Visit this URL and authorize application: https://myteam.qiita.com/api/v2/oauth/authorize?client_id=abcd1234abcd1234abcd1234abcd1234abcd1234&state=#{pendingToken}&scope=read_qiita_team%20write_qiita_team%20read_qiita%20write_qiita"]
               do done
             catch e
               done e
@@ -91,11 +93,12 @@ describe 'hubot-qiita', ->
     describe 'Handle callbacks', ->
       beforeEach ->
         robot.brain.set 'qiita.pending_tokens', asdfasdf: '1'
-        nockScope = nockScope
+        nockScope2 = nockScope2
           .post('/api/v2/access_tokens').reply 201,
             client_id: 'a91f0396a0968ff593eafdd194e3d17d32c41b1da7b25e873b42e9058058cd9d'
             scopes: ['all'],
             token: 'ea5d0a593b2655e9568f144fb1826342292f5c6b7d406fda00577b8d1530d8a5'
+        nockScope = nockScope
           .get('/api/v2/authenticated_user').reply 200, { id: 'ngs' }
 
       it 'handles callback', (done) ->
@@ -284,4 +287,3 @@ describe 'hubot-qiita', ->
               done e
           expect(robot.listeners).to.have.length 7
           adapter.receive new TextMessage user, msg
-
