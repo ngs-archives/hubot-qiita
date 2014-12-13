@@ -12,6 +12,15 @@ describe 'hubot-qiita', ->
   adapter = null
   nockScope = null
   nockScope2 = null
+
+  nextAdapterEvent = (event, done, callback) ->
+    adapter.on event, ->
+      try
+        callback.apply @, arguments
+      catch e
+        console.error e
+        done e
+
   beforeEach (done)->
     nock.disableNetConnect()
     nockScope = nock 'https://myteam.qiita.com'
@@ -54,22 +63,19 @@ describe 'hubot-qiita', ->
       do done
 
     it 'should parse help', (done)->
-      adapter.on 'send', (envelope, strings)->
-        try
-          expect(strings).to.deep.equal ["""
-          TestHubot help - Displays all of the help commands that TestHubot knows about.
-          TestHubot help <query> - Displays all help commands that match <query>.
-          TestHubot qiita authenticate me - Authenticate with Qiita account
-          TestHubot qiita list stocked items
-          TestHubot qiita list templates
-          TestHubot qiita new coediting item with template <template id> title <title>
-          TestHubot qiita new item with template <template id> "<title>"
-          TestHubot qiita start recording "<title>" - Start recording chat room
-          TestHubot qiita stop recording
-          """]
-          do done
-        catch e
-          done e
+      nextAdapterEvent 'send', done, (envelope, strings)->
+        expect(strings).to.deep.equal ["""
+        TestHubot help - Displays all of the help commands that TestHubot knows about.
+        TestHubot help <query> - Displays all help commands that match <query>.
+        TestHubot qiita authenticate me - Authenticate with Qiita account
+        TestHubot qiita list stocked items
+        TestHubot qiita list templates
+        TestHubot qiita new coediting item with template <template id> title <title>
+        TestHubot qiita new item with template <template id> "<title>"
+        TestHubot qiita start recording "<title>" - Start recording chat room
+        TestHubot qiita stop recording
+        """]
+        do done
       adapter.receive new TextMessage user, 'TestHubot help'
 
   describe 'authentication', (done)->
@@ -79,16 +85,13 @@ describe 'hubot-qiita', ->
     ].forEach (msg)->
       describe msg, ->
         it 'should reply authenticate url', (done)->
-          adapter.on 'reply', (envelope, strings)->
-            try
-              obj = robot.brain.get 'qiita.pending_tokens'
-              pendingToken = Object.keys(obj)[0]
-              expect(pendingToken).to.match /^[a-f0-9]{40}$/
-              expect(obj[pendingToken]).to.deep.equal { room: '#mocha', user: { name: 'ngs', room: '#mocha', id: '1' } }
-              expect(strings).to.deep.equal ["Visit this URL and authorize application: https://myteam.qiita.com/api/v2/oauth/authorize?client_id=abcd1234abcd1234abcd1234abcd1234abcd1234&state=#{pendingToken}&scope=read_qiita_team%20write_qiita_team%20read_qiita%20write_qiita"]
-              do done
-            catch e
-              done e
+          nextAdapterEvent 'reply', done, (envelope, strings)->
+            obj = robot.brain.get 'qiita.pending_tokens'
+            pendingToken = Object.keys(obj)[0]
+            expect(pendingToken).to.match /^[a-f0-9]{40}$/
+            expect(obj[pendingToken]).to.deep.equal { room: '#mocha', user: { name: 'ngs', room: '#mocha', id: '1' } }
+            expect(strings).to.deep.equal ["Visit this URL and authorize application: https://myteam.qiita.com/api/v2/oauth/authorize?client_id=abcd1234abcd1234abcd1234abcd1234abcd1234&state=#{pendingToken}&scope=read_qiita_team%20write_qiita_team%20read_qiita%20write_qiita"]
+            do done
           adapter.receive new TextMessage user, msg
     describe 'Handle callbacks', ->
       beforeEach ->
@@ -120,7 +123,7 @@ describe 'hubot-qiita', ->
         body: "日報のひな形#{i}です。"
         id: i
         name: "日報 #{i}"
-        expanded_body: "日報のひな形です。"
+        expanded_body: "<%=  user  %> 日報 <%= date  %> のひな形です。"
         expanded_tags: [
           name: "example tag"
           versions: ["0.0.#{i}"]
@@ -132,24 +135,21 @@ describe 'hubot-qiita', ->
         ]
         title: "%{Year}/%{month}/%{day}日報"
       nockScope = nockScope
-        .get('/api/v2/templates').reply 200, data
+        .get('/api/v2/templates?per_page=100').reply 200, data
     [
       'testhubot  qiita  list  templates '
       'testhubot  qiita  ls  template  '
     ].forEach (msg)->
       describe msg, ->
         it 'list templates', (done)->
-          adapter.on 'reply', (envelope, strings)->
-            try
-              expect(strings).to.deep.equal ["""
-              Listing templates:
-              1: 日報 1
-              2: 日報 2
-              3: 日報 3
-              """]
-              do done
-            catch e
-              done e
+          nextAdapterEvent 'reply', done, (envelope, strings)->
+            expect(strings).to.deep.equal ["""
+            Listing templates:
+            1: 日報 1
+            2: 日報 2
+            3: 日報 3
+            """]
+            do done
           adapter.receive new TextMessage user, msg
 
   describe 'stocks', ->
@@ -159,7 +159,7 @@ describe 'hubot-qiita', ->
         title: "日報#{i}"
         id: i
       nockScope = nockScope
-        .get('/api/v2/users/ngs/stocks').reply 200, data
+        .get('/api/v2/users/ngs/stocks?per_page=100').reply 200, data
         .get('/api/v2/authenticated_user').reply 200, id: 'ngs'
     [
       'testhubot  qiita  list  stocked  items '
@@ -169,18 +169,16 @@ describe 'hubot-qiita', ->
     ].forEach (msg)->
       describe msg, ->
         it 'list stocked', (done)->
-          adapter.on 'reply', (envelope, strings)->
-            try
-              expect(strings).to.deep.equal ["""
-              Listing stocked items:
-              日報1: https://myteam.qiita.com/items/1
-              日報2: https://myteam.qiita.com/items/2
-              日報3: https://myteam.qiita.com/items/3
-              """]
-              do done
-            catch e
-              done e
+          nextAdapterEvent 'reply', done, (envelope, strings)->
+            expect(strings).to.deep.equal ["""
+            Listing stocked items:
+            日報1: https://myteam.qiita.com/items/1
+            日報2: https://myteam.qiita.com/items/2
+            日報3: https://myteam.qiita.com/items/3
+            """]
+            do done
           adapter.receive new TextMessage user, msg
+
 
     [
       'testhubot  qiita  list  stocked  items  2 '
@@ -190,15 +188,12 @@ describe 'hubot-qiita', ->
     ].forEach (msg)->
       describe msg, ->
         it 'queries entries', (done)->
-          adapter.on 'reply', (envelope, strings)->
-            try
-              expect(strings).to.deep.equal ["""
-              Listing stocked items:
-              日報2: https://myteam.qiita.com/items/2
-              """]
-              do done
-            catch e
-              done e
+          nextAdapterEvent 'reply', done, (envelope, strings) ->
+            expect(strings).to.deep.equal ["""
+            Listing stocked items:
+            日報2: https://myteam.qiita.com/items/2
+            """]
+            do done
           adapter.receive new TextMessage user, msg
 
   describe 'item', ->
@@ -209,17 +204,17 @@ describe 'hubot-qiita', ->
           body: "日報のひな形です。"
           id: 1
           name: "日報"
-          expanded_body: "日報のひな形です。"
+          expanded_body: "日報のひな形です。 %{hubot:user} %{hubot:room} "
           expanded_tags: [
-            name: "example tag"
+            name: "example tag %{hubot:room}"
             versions: ["0.0.1"]
           ]
-          expanded_title: "2014/09/26日報"
+          expanded_title: "2014/09/26 %{hubot:user} %{hubot:room} 日報 %{summary} "
           tags: [
-            name: "example tag"
+            name: "example tag %{hubot:room}"
             versions: ["0.0.1"]
           ]
-          title: "%{Year}/%{month}/%{day}日報"
+          title: "%{Year}/%{month}/%{day} %{hubot.user} %{hubot.room} 日報 %{summary} "
         .post('/api/v2/items').reply 201,
           body: "puts 'hello world'"
           id: "4bd431809afb1bb99e4f"
@@ -227,17 +222,19 @@ describe 'hubot-qiita', ->
 
     describe 'create coediting item', ->
       [
-        'testhubot  qiita  create  coediting  item  with  template  123  "abcd  efgh"  '
-        'testhubot  qiita  new  coediting  entry  with  template  123  "abcd efgh"  '
+        'testhubot  qiita  create  coediting  item  with  template  123 '
+        'testhubot  qiita  new  coediting  entry  with  template  123  '
       ].forEach (msg)->
         describe msg, ->
           it 'craetes coediting entry', (done)->
-            adapter.on 'reply', (envelope, strings)->
-              try
-                expect(strings).to.deep.equal ['Created new coediting item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f']
-                do done
-              catch e
-                done e
+            count = 0
+            nextAdapterEvent 'reply', done, (envelope, strings)->
+              expect(strings).to.deep.equal [[
+                'summary?'
+                'Created new coediting item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f'
+              ][count++]]
+              do done if count == 2
+              adapter.receive new TextMessage user, 'test foo bar'
             adapter.receive new TextMessage user, msg
 
     describe 'create item', (done)->
@@ -247,12 +244,9 @@ describe 'hubot-qiita', ->
       ].forEach (msg)->
         describe msg, ->
           it 'craetes coediting item', (done) ->
-            adapter.on 'reply', (envelope, strings)->
-              try
-                expect(strings).to.deep.equal ['Created new item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f']
-                do done
-              catch e
-                done e
+            nextAdapterEvent 'reply', done, (envelope, strings)->
+              expect(strings).to.deep.equal ['Created new item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f']
+              do done
             adapter.receive new TextMessage user, msg
 
   describe 'recording', ->
@@ -270,20 +264,17 @@ describe 'hubot-qiita', ->
       describe msg, ->
         it 'starts recording session', (done) ->
           count = 0
-          adapter.on 'reply', (envelope, strings)->
-            try
-              expect(strings).to.deep.equal [[
-                'Started recording session'
-                'Already running recording session.'
-                'Created new item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f'
-                'No recording session running.'
-              ][count]]
-              expect(robot.listeners).to.have.length if count < 2 then 8 else 7
-              switch ++count
-                when 1    then adapter.receive new TextMessage user, m for m in [msg, 'foo', 'bar', 'baz']
-                when 2, 3 then adapter.receive new TextMessage user, 'testhubot  qiita  stop  recording'
-                else do done
-            catch e
-              done e
+          nextAdapterEvent 'reply', done, (envelope, strings)->
+            expect(strings).to.deep.equal [[
+              'Started recording session'
+              'Already running recording session.'
+              'Created new item *hello world* https://myteam.qiita.com/items/4bd431809afb1bb99e4f'
+              'No recording session running.'
+            ][count]]
+            expect(robot.listeners).to.have.length if count < 2 then 8 else 7
+            switch ++count
+              when 1    then adapter.receive new TextMessage user, m for m in [msg, 'foo', 'bar', 'baz']
+              when 2, 3 then adapter.receive new TextMessage user, 'testhubot  qiita  stop  recording'
+              else do done
           expect(robot.listeners).to.have.length 7
           adapter.receive new TextMessage user, msg

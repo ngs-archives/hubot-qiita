@@ -14,7 +14,7 @@ deploy:
   provider: npm
   email: a@ngs.io
   api_key:
-    secure: gSaiFtITG1dgRDFSjS72pT6tD/twalhGDDQB4jv9/OiFZDSagspTRsykrZiqC8l9LEwdXptjWw1c2NKEGax31xh5dGNdP4jTD32HsUW0OzJBKaNgD5LP+7u2+yqM1t+9Sdpvn4MPW+ouXM75+xdeUCuzsKBKCq4ihxrA4zTXT54=
+    secure: ZmHA4Q4qM9Zb42Lea/yFEa4CR1oNPpX2fqYGd+L64X/Nh1bVcnSykRV2HtXZ1jLLP99+3ASKyykbFhq/IcAIQC/iJ18mw6yK8GY5oVckFBZrRDIhH6drvkzcBUzXdXFLD8GEljvz8BGcdlUzbE23A8G6mamsOTKrcBoiq+jjfyg=
   on:
     tags: true
     all_branches: true

@@ -34,6 +34,23 @@ module.exports = (robot) ->
 
   scope = 'read_qiita_team write_qiita_team read_qiita write_qiita'
 
+  removeListenr = (listener) ->
+    index = robot.listeners.indexOf listener
+    robot.listeners.splice index, 1 if index != -1
+
+  waitForResponse = (waitMsg, callback) ->
+    userId = waitMsg.envelope.user.id
+    room = waitMsg.envelope.room
+    listener = new TextListener robot, /.*/, (msg) ->
+      {envelope} = msg
+      if envelope.room is room and envelope.user.id is userId
+        removeListenr listener
+        if msg.envelope.message.text.toLowerCase() is 'cancel!'
+          waitMsg.reply 'Canceled'
+        else
+          callback.apply null, arguments
+    robot.listeners.push listener
+
   getHost = -> "#{HUBOT_QIITA_TEAM}.qiita.com"
 
   getAccessToken = (msg) ->
@@ -68,7 +85,7 @@ module.exports = (robot) ->
       callback = params
       params = {}
     query = {}
-    for k, v in params || {}
+    for k, v of params || {}
       query[k] = v unless k is 'token'
     qstr = qs.stringify query
     path += "?#{qstr}" if qstr.length > 0
@@ -149,12 +166,41 @@ module.exports = (robot) ->
       body = jsonBody['expanded_body']
       tags = jsonBody['expanded_tags']
       title ||= jsonBody['expanded_title']
-      postAPI 'items', { body, coediting, tags, title, token }, (err, res, body) ->
-        msg.reply "Created new #{ if coediting then 'coediting ' else '' }item *#{body.title}* https://#{getHost()}/items/#{body.id}"
+      vars = {}
+      doPost = ->
+        for k, v of vars
+          repl = (str) -> str.replace "%{#{k}}", v
+          body  = repl body
+          title = repl title
+          tags = tags.map (t) ->
+            t.name = repl t.name
+            t
+        params = { body, coediting, tags, title, token }
+        postAPI 'items', params, (err, res, body) ->
+          msg.reply "Created new #{ if coediting then 'coediting ' else '' }item *#{body.title}* https://#{getHost()}/items/#{body.id}"
+      askNext = ->
+        return do doPost unless varNames?.length > 0
+        waitForResponse msg, (msg) ->
+          vars[q] = msg.envelope.message.text
+          do askNext
+        q = varNames.shift()
+        msg.reply "#{q}?"
+      varNames = []
+      addVarNames = (str) ->
+        str.replace /%{([^\}]+)}/g, (s, p1) ->
+          if varNames.indexOf(p1) == -1 and !/^hubot\:(user|room)$/.test(p1)
+            varNames.push p1
+      addVarNames body
+      addVarNames title
+      tags.forEach ({ name }) -> addVarNames name
+      vars =
+        'hubot:user': msg.envelope.user.name
+        'hubot:room': msg.envelope.room
+      do askNext
 
   robot.respond /\s*qiita\s+(?:list|ls)\s+templates?\s*$/i, (msg) ->
     return unless token = checkAuthenticated msg
-    getAPI "templates", {token, per_page: 100 }, (err, res, body) ->
+    getAPI "templates", {token, per_page: 100}, (err, res, body) ->
       text = ['Listing templates:']
       for { id, name } in body
         text.push "#{id}: #{name}"
@@ -164,7 +210,7 @@ module.exports = (robot) ->
     return unless token = checkAuthenticated msg
     query = msg.match?[1]
     getAPI "authenticated_user", {token}, (err, res, body) ->
-      getAPI "users/#{body.id}/stocks", {token, per_page: 100 }, (err, res, jsonBody) ->
+      getAPI "users/#{body.id}/stocks", {token, per_page: 100}, (err, res, jsonBody) ->
         text = ['Listing stocked items:']
         for { id, title, body } in jsonBody
           if !query? or body?.indexOf(query) >= 0 or title?.indexOf(query) >= 0
@@ -188,7 +234,7 @@ module.exports = (robot) ->
     robot.listeners.push listener
     msg.reply 'Started recording session'
 
-  robot.respond /\s*qiita\s+stop\s+recording\s*$/i, (msg) ->
+  robot.respond /\s*qiita\s+(stop|cancel)\s+recording\s*$/i, (msg) ->
     return unless token = checkAuthenticated msg
     { room, user } = msg.envelope
     unless session = recordingSessions[room]
@@ -196,11 +242,12 @@ module.exports = (robot) ->
       return
     delete recordingSessions[room]
     { buffer, title, listener } = session
-    index = robot.listeners.indexOf listener
+    process.nextTick -> removeListenr listener
     body = buffer.join "\n"
     tags = [{name: room}]
-    process.nextTick ->
-      robot.listeners.splice index, 1 if index != -1
     params = { body, tags, title, token }
-    postAPI 'items', params, (err, res, body) ->
-      msg.reply "Created new item *#{body.title}* https://#{getHost()}/items/#{body.id}"
+    if msg.match[1]?.toLowerCase() is 'cancel'
+      msg.reply 'Canceled'
+    else
+      postAPI 'items', params, (err, res, body) ->
+        msg.reply "Created new item *#{body.title}* https://#{getHost()}/items/#{body.id}"
