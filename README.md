@@ -77,6 +77,88 @@ heroku config:set \
   HUBOT_QIITA_CLIENT_SECRET=<client secret>
 ```
 
+Create new item from template
+-----------------------------
+
+![](img/screen.gif)
+
+[hubot-qiita] extracts variables wrapped with `%{}` from templates.
+
+If you have templates like this, Hubot asks contents to fill those variables and creates new item.
+
+title:
+
+```
+%{title} KPT - %{Year}-%{month}-%{day}
+```
+
+tags:
+
+```
+KPT
+```
+
+body:
+
+```
+## Keep
+
+%{Keep}
+
+## Problem
+
+%{Problem}
+
+## Try
+
+%{Try}
+
+----
+
+This entry was created by %{hubot:user} on %{hubot:room}
+```
+
+You can create templates from [Templates] page of your Qiita Team.
+
+Run this command to start creating new item:
+
+```
+hubot qiita new item with template $TEMPLATE_ID
+```
+
+You can retrieve template ID with `hubot qiita list templates` command.
+
+If you'd like to abort creation, just send `cancel!` in same room you started.
+
+All Qiita Markdown formats are supported.
+
+Recording chat
+--------------
+
+[hubot-qiita] supports recording messages in the room.
+
+Mardown is supported as well.
+
+To start recording session:
+
+```
+hubot qiita start recording
+```
+
+Hubot will start recording from the next message in the room until the recording session is canceled or stopped.
+
+To stop recording and save it to Qiita Team:
+
+```
+hubot qiita stop recording
+```
+
+If you'd like to cancel recording:
+
+```
+hubot qiita cancel recording
+```
+
 Author
 ------
 
@@ -100,3 +182,5 @@ License
 [User Settings]: https://qiita.com/settings/applications
 [Register new Application]: https://qiita.com/settings/applications/new
 [Qiita Team]: https://teams.qiita.com/
+[hubot-qiita]: https://github.com/ngs/hubot-qiita
+[Templates]: https://yourteam.qiita.com/templates
