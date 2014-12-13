@@ -34,15 +34,21 @@ module.exports = (robot) ->
 
   scope = 'read_qiita_team write_qiita_team read_qiita write_qiita'
 
+  removeListenr = (listener) ->
+    index = robot.listeners.indexOf listener
+    robot.listeners.splice index, 1 if index != -1
+
   waitForResponse = (waitMsg, callback) ->
     userId = waitMsg.envelope.user.id
     room = waitMsg.envelope.room
     listener = new TextListener robot, /.*/, (msg) ->
       {envelope} = msg
       if envelope.room is room and envelope.user.id is userId
-        index = robot.listeners.indexOf listener
-        robot.listeners.splice index, 1 if index != -1
-        callback.apply null, arguments
+        removeListenr listener
+        if msg.envelope.message.text.toLowerCase() is 'cancel!'
+          waitMsg.reply 'Canceled'
+        else
+          callback.apply null, arguments
     robot.listeners.push listener
 
   getHost = -> "#{HUBOT_QIITA_TEAM}.qiita.com"
@@ -228,7 +234,7 @@ module.exports = (robot) ->
     robot.listeners.push listener
     msg.reply 'Started recording session'
 
-  robot.respond /\s*qiita\s+stop\s+recording\s*$/i, (msg) ->
+  robot.respond /\s*qiita\s+(stop|cancel)\s+recording\s*$/i, (msg) ->
     return unless token = checkAuthenticated msg
     { room, user } = msg.envelope
     unless session = recordingSessions[room]
@@ -236,11 +242,12 @@ module.exports = (robot) ->
       return
     delete recordingSessions[room]
     { buffer, title, listener } = session
-    index = robot.listeners.indexOf listener
+    process.nextTick -> removeListenr listener
     body = buffer.join "\n"
     tags = [{name: room}]
-    process.nextTick ->
-      robot.listeners.splice index, 1 if index != -1
     params = { body, tags, title, token }
-    postAPI 'items', params, (err, res, body) ->
-      msg.reply "Created new item *#{body.title}* https://#{getHost()}/items/#{body.id}"
+    if msg.match[1]?.toLowerCase() is 'cancel'
+      msg.reply 'Canceled'
+    else
+      postAPI 'items', params, (err, res, body) ->
+        msg.reply "Created new item *#{body.title}* https://#{getHost()}/items/#{body.id}"
