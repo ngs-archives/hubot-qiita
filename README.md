@@ -9,7 +9,7 @@ A [Hubot] script to list and create [Qiita] items.
 Currently supporting only [Qiita Team].
 
 ```
-me > hubot authenticate me
+me > hubot qiita authenticate me
 hubot > Visit this URL and authorize application: https://...
 hubot > Authenticated to Qiita with id:ngs
 me > hubot qiita list templates
